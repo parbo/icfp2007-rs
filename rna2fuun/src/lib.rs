@@ -156,6 +156,9 @@ mod tests {
     #[test]
     fn test_current_pixel() {
         let b = Color::Rgb(BLACK);
+        let r = Color::Rgb(RED);
+        let m = Color::Rgb(MAGENTA);
+        let w = Color::Rgb(WHITE);
         let y = Color::Rgb(YELLOW);
         let c = Color::Rgb(CYAN);
         let t = Color::Transparency(TRANSPARENT);
@@ -170,5 +173,28 @@ mod tests {
         fuun_2.add_color(y);
         fuun_2.add_color(c);
         assert_eq!(fuun_2.current_pixel(), Pixel::new(85, 170, 85, 255));
+        let mut fuun_3 = Fuun::new();
+        fuun_3.add_color(y);
+        fuun_3.add_color(t);
+        fuun_3.add_color(o);
+        assert_eq!(fuun_3.current_pixel(), Pixel::new(127, 127, 0, 127));
+        let mut fuun_4 = Fuun::new();
+        for _ in 0..18 {
+            fuun_4.add_color(b);
+        }
+        for _ in 0..7 {
+            fuun_4.add_color(r);
+        }
+        for _ in 0..39 {
+            fuun_4.add_color(m);
+        }
+        for _ in 0..10 {
+            fuun_4.add_color(w);
+        }
+        for _ in 0..3 {
+            fuun_4.add_color(o);
+        }
+        fuun_4.add_color(t);
+        assert_eq!(fuun_4.current_pixel(), Pixel::new(143, 25, 125, 191));
     }
 }
