@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "rna2fuun",
+    "rna2fuun-ui"
+]
