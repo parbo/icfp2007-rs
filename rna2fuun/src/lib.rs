@@ -1,4 +1,4 @@
-type Coord = u32;
+type Coord = i32;
 
 #[derive(Clone, Copy)]
 struct Pos {
@@ -59,6 +59,7 @@ impl Pixel {
     }
 }
 
+#[derive(Clone)]
 struct Bitmap {
     pixels: Vec<Pixel>, // 600 x 600
 }
@@ -77,6 +78,7 @@ enum Color {
     Transparency(Transparency),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Dir {
     N,
     E,
@@ -142,6 +144,192 @@ impl Fuun {
             ((bc * ac) / 255) as Component,
             ac as Component,
         )
+    }
+
+    fn move_dir(pos: Pos, d: Dir) -> Pos {
+        match d {
+            Dir::N => {
+                let y = if pos.y == 0 { 599 } else { pos.y - 1 };
+                Pos { x: pos.x, y }
+            }
+            Dir::E => {
+                let x = if pos.x == 599 { 0 } else { pos.x + 1 };
+                Pos { x, y: pos.y }
+            }
+            Dir::S => {
+                let y = if pos.y == 599 { 0 } else { pos.y + 1 };
+                Pos { x: pos.x, y }
+            }
+            Dir::W => {
+                let x = if pos.x == 0 { 599 } else { pos.x - 1 };
+                Pos { x, y: pos.y }
+            }
+        }
+    }
+
+    fn turn_ccw(d: Dir) -> Dir {
+        match d {
+            Dir::N => Dir::W,
+            Dir::E => Dir::N,
+            Dir::S => Dir::E,
+            Dir::W => Dir::S,
+        }
+    }
+
+    fn turn_cw(d: Dir) -> Dir {
+        match d {
+            Dir::N => Dir::E,
+            Dir::E => Dir::S,
+            Dir::S => Dir::W,
+            Dir::W => Dir::N,
+        }
+    }
+
+    fn get_pixel(&self, p: Pos) -> Pixel {
+        let ix = (p.y * 600 + p.x) as usize;
+        if ix < self.bitmaps[0].pixels.len() {
+            self.bitmaps[0].pixels[ix]
+        } else {
+            Pixel::new(0, 0, 0, 0)
+        }
+    }
+
+    fn set_pixel(&mut self, p: Pos) {
+        let ix = (p.y * 600 + p.x) as usize;
+        if ix < self.bitmaps[0].pixels.len() {
+            self.bitmaps[0].pixels[ix] = self.current_pixel();
+        }
+    }
+
+    fn line(&mut self, p0: Pos, p1: Pos) {
+        let deltax = p1.x - p0.x;
+        let deltay = p1.y - p0.y;
+        let d = std::cmp::max(deltax.abs(), deltay.abs());
+        let c = if deltax * deltay <= 0 { 1 } else { 0 };
+        let mut x = p0.x * d + (d - c) / 2;
+        let mut y = p0.y * d + (d - c) / 2;
+        for _ in 0..d {
+            let p = Pos { x: x / d, y: y / d };
+            self.set_pixel(p);
+            x = x + deltax;
+            y = y + deltay;
+        }
+        self.set_pixel(p1);
+    }
+
+    fn try_fill(&mut self) {
+        let new = self.current_pixel();
+        let old = self.get_pixel(self.position);
+        if new != old {
+            self.fill(self.position, old);
+        }
+    }
+
+    fn fill(&mut self, p: Pos, initial: Pixel) {
+        if self.get_pixel(p) == initial {
+            self.set_pixel(p);
+            if p.x > 0 {
+                self.fill(Pos { x: p.x - 1, y: p.y }, initial);
+            }
+            if p.x < 599 {
+                self.fill(Pos { x: p.x - 1, y: p.y }, initial);
+            }
+            if p.y > 0 {
+                self.fill(Pos { x: p.x, y: p.y - 1 }, initial);
+            }
+            if p.y < 599 {
+                self.fill(Pos { x: p.x, y: p.y + 1 }, initial);
+            }
+        }
+    }
+
+    fn add_bitmap(&mut self) {
+        if self.bitmaps.len() < 10 {
+            self.bitmaps.insert(0, Bitmap::new());
+        }
+    }
+
+    fn compose(&mut self) {
+        if self.bitmaps.len() >= 2 {
+            for y in 0..600 {
+                for x in 0..600 {
+                    let ix = (y * 600 + x) as usize;
+                    let pixel0 = self.bitmaps[0].pixels[ix];
+                    let r0 = pixel0.color.r as usize;
+                    let g0 = pixel0.color.g as usize;
+                    let b0 = pixel0.color.b as usize;
+                    let a0 = pixel0.alpha as usize;
+                    let pixel1 = self.bitmaps[1].pixels[ix];
+                    let r1 = pixel1.color.r as usize;
+                    let g1 = pixel1.color.g as usize;
+                    let b1 = pixel1.color.b as usize;
+                    let a1 = pixel1.alpha as usize;
+                    let pixel = Pixel::new(
+                        (r0 + r1 * (255 - a0) / 255) as Component,
+                        (g0 + g1 * (255 - a0) / 255) as Component,
+                        (b0 + b1 * (255 - a0) / 255) as Component,
+                        (a0 + a1 * (255 - a0) / 255) as Transparency,
+                    );
+                    self.bitmaps[1].pixels[ix] = pixel;
+                }
+            }
+            self.bitmaps.remove(0);
+        }
+    }
+
+    fn clip(&mut self) {
+        if self.bitmaps.len() >= 2 {
+            for y in 0..600 {
+                for x in 0..600 {
+                    let ix = (y * 600 + x) as usize;
+                    let pixel0 = self.bitmaps[0].pixels[ix];
+                    let a0 = pixel0.alpha as usize;
+                    let pixel1 = self.bitmaps[1].pixels[ix];
+                    let r1 = pixel1.color.r as usize;
+                    let g1 = pixel1.color.g as usize;
+                    let b1 = pixel1.color.b as usize;
+                    let a1 = pixel1.alpha as usize;
+                    let pixel = Pixel::new(
+                        (r1 * a0 / 255) as Component,
+                        (g1 * a0 / 255) as Component,
+                        (b1 * a0 / 255) as Component,
+                        (a1 * a0 / 255) as Transparency,
+                    );
+                    self.bitmaps[1].pixels[ix] = pixel;
+                }
+            }
+            self.bitmaps.remove(0);
+        }
+    }
+
+    fn build(&mut self, rna: &str) -> Bitmap {
+	for i in 0..rna.len() {
+	    let code = &rna[i..i+7];
+	    match code {
+		"PIPIIIC" => self.add_color(Color::Rgb(BLACK)),
+		"PIPIIIP" => self.add_color(Color::Rgb(RED)),
+		"PIPIICC" => self.add_color(Color::Rgb(GREEN)),
+		"PIPIICF" => self.add_color(Color::Rgb(YELLOW)),
+		"PIPIICP" => self.add_color(Color::Rgb(BLUE)),
+		"PIPIIFC" => self.add_color(Color::Rgb(MAGENTA)),
+		"PIPIIFF" => self.add_color(Color::Rgb(CYAN)),
+		"PIPIIPC" => self.add_color(Color::Rgb(WHITE)),
+		"PIPIIPF" => self.add_color(Color::Transparency(TRANSPARENT)),
+		"PIPIIPP" => self.add_color(Color::Transparency(OPAQUE)),
+		"PIIPICP" => self.bucket.clear(),
+		"PIIIIIP" => self.position = Fuun::move_dir(self.position, self.dir),
+		"PCCCCCP" => self.dir = Fuun::turn_ccw(self.dir),
+		"PFFFFFP" => self.dir = Fuun::turn_cw(self.dir),
+		"PCCIFFP" => self.mark = self.position,
+		"PFFICCP" => self.line(self.position, self.mark),
+		"PIIPIIP" => self.try_fill(),
+		"PCCPFFP" => self.add_bitmap(),
+		"PFFPCCP" => self.compose(),
+		"PFFICCF" => self.clip(),
+		_ => {}
+	    }
+	}
+	self.bitmaps[0].clone()
     }
 }
 
