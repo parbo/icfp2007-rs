@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 type Coord = i32;
 
 #[derive(Clone, Copy)]
@@ -9,10 +11,10 @@ struct Pos {
 type Component = u8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct Rgb {
-    r: Component,
-    g: Component,
-    b: Component,
+pub struct Rgb {
+    pub r: Component,
+    pub g: Component,
+    pub b: Component,
 }
 
 type Transparency = Component;
@@ -45,9 +47,9 @@ const TRANSPARENT: Component = 0;
 const OPAQUE: Component = 255;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct Pixel {
-    color: Rgb,
-    alpha: Transparency,
+pub struct Pixel {
+    pub color: Rgb,
+    pub alpha: Transparency,
 }
 
 impl Pixel {
@@ -60,14 +62,14 @@ impl Pixel {
 }
 
 #[derive(Clone)]
-struct Bitmap {
-    pixels: Vec<Pixel>, // 600 x 600
+pub struct Bitmap {
+    pub pixels: Vec<Pixel>, // 600 x 600
 }
 
 impl Bitmap {
     fn new() -> Bitmap {
         Bitmap {
-            pixels: vec![Pixel::new(0, 0, 0, 0); 360000],
+            pixels: vec![Pixel::new(0, 0, 0, TRANSPARENT); 360000],
         }
     }
 }
@@ -86,30 +88,46 @@ enum Dir {
     W,
 }
 
-struct Fuun {
+pub struct Fuun {
+    rna: String,
     bucket: Vec<Color>,
     position: Pos,
     mark: Pos,
     dir: Dir,
-    bitmaps: Vec<Bitmap>,
+    bitmaps: VecDeque<Bitmap>,
+    current: Option<Pixel>,
+    fill_todo: Vec<Pos>,
+    step: usize,
 }
 
 impl Fuun {
-    fn new() -> Fuun {
-        Fuun {
+    pub fn new(rna: &str) -> Fuun {
+        let mut bitmaps = VecDeque::new();
+        bitmaps.push_front(Bitmap::new());
+        let mut f = Fuun {
+            rna: rna.to_owned(),
             bucket: vec![],
             position: Pos { x: 0, y: 0 },
             mark: Pos { x: 0, y: 0 },
             dir: Dir::E,
-            bitmaps: vec![Bitmap::new()],
-        }
+            bitmaps,
+            current: None,
+            fill_todo: vec![],
+            step: 0,
+        };
+        f.fill_todo.reserve(360000);
+        f
     }
 
     fn add_color(&mut self, color: Color) {
+        self.current = None;
         self.bucket.insert(0, color);
     }
 
-    fn current_pixel(&self) -> Pixel {
+    fn current_pixel(&mut self) -> Pixel {
+        if let Some(pixel) = self.current {
+            return pixel;
+        }
         let mut rsum = 0usize;
         let mut rcnt = 0usize;
         let mut gsum = 0usize;
@@ -138,33 +156,36 @@ impl Fuun {
         let gc = if gcnt > 0 { gsum / gcnt } else { 0 };
         let bc = if bcnt > 0 { bsum / bcnt } else { 0 };
         let ac = if acnt > 0 { asum / acnt } else { 255 };
-        Pixel::new(
+        let p = Pixel::new(
             ((rc * ac) / 255) as Component,
             ((gc * ac) / 255) as Component,
             ((bc * ac) / 255) as Component,
             ac as Component,
-        )
+        );
+        self.current = Some(p);
+        p
     }
 
     fn move_dir(pos: Pos, d: Dir) -> Pos {
+        let mut y = pos.y;
+        let mut x = pos.x;
         match d {
-            Dir::N => {
-                let y = if pos.y == 0 { 599 } else { pos.y - 1 };
-                Pos { x: pos.x, y }
-            }
-            Dir::E => {
-                let x = if pos.x == 599 { 0 } else { pos.x + 1 };
-                Pos { x, y: pos.y }
-            }
-            Dir::S => {
-                let y = if pos.y == 599 { 0 } else { pos.y + 1 };
-                Pos { x: pos.x, y }
-            }
-            Dir::W => {
-                let x = if pos.x == 0 { 599 } else { pos.x - 1 };
-                Pos { x, y: pos.y }
-            }
+            Dir::N => y = y - 1,
+            Dir::E => x = x + 1,
+            Dir::S => y = y + 1,
+            Dir::W => x = x - 1,
         }
+        if y < 0 {
+            y = 599;
+        } else if y > 599 {
+            y = 0;
+        }
+        if x < 0 {
+            x = 599;
+        } else if x > 599 {
+            x = 0;
+        }
+        Pos { x, y }
     }
 
     fn turn_ccw(d: Dir) -> Dir {
@@ -187,18 +208,12 @@ impl Fuun {
 
     fn get_pixel(&self, p: Pos) -> Pixel {
         let ix = (p.y * 600 + p.x) as usize;
-        if ix < self.bitmaps[0].pixels.len() {
-            self.bitmaps[0].pixels[ix]
-        } else {
-            Pixel::new(0, 0, 0, 0)
-        }
+        self.bitmaps[0].pixels[ix]
     }
 
     fn set_pixel(&mut self, p: Pos) {
         let ix = (p.y * 600 + p.x) as usize;
-        if ix < self.bitmaps[0].pixels.len() {
-            self.bitmaps[0].pixels[ix] = self.current_pixel();
-        }
+        self.bitmaps[0].pixels[ix] = self.current_pixel();
     }
 
     fn line(&mut self, p0: Pos, p1: Pos) {
@@ -206,8 +221,8 @@ impl Fuun {
         let deltay = p1.y - p0.y;
         let d = std::cmp::max(deltax.abs(), deltay.abs());
         let c = if deltax * deltay <= 0 { 1 } else { 0 };
-        let mut x = p0.x * d + (d - c) / 2;
-        let mut y = p0.y * d + (d - c) / 2;
+        let mut x = p0.x * d + ((d - c) / 2);
+        let mut y = p0.y * d + ((d - c) / 2);
         for _ in 0..d {
             let p = Pos { x: x / d, y: y / d };
             self.set_pixel(p);
@@ -225,27 +240,30 @@ impl Fuun {
         }
     }
 
-    fn fill(&mut self, p: Pos, initial: Pixel) {
-        if self.get_pixel(p) == initial {
-            self.set_pixel(p);
-            if p.x > 0 {
-                self.fill(Pos { x: p.x - 1, y: p.y }, initial);
-            }
-            if p.x < 599 {
-                self.fill(Pos { x: p.x - 1, y: p.y }, initial);
-            }
-            if p.y > 0 {
-                self.fill(Pos { x: p.x, y: p.y - 1 }, initial);
-            }
-            if p.y < 599 {
-                self.fill(Pos { x: p.x, y: p.y + 1 }, initial);
+    fn fill(&mut self, pos: Pos, initial: Pixel) {
+        self.fill_todo.push(pos);
+        while let Some(p) = self.fill_todo.pop() {
+            if self.get_pixel(p) == initial {
+                self.set_pixel(p);
+                if p.x > 0 {
+                    self.fill_todo.push(Pos { x: p.x - 1, y: p.y });
+                }
+                if p.x < 599 {
+                    self.fill_todo.push(Pos { x: p.x + 1, y: p.y });
+                }
+                if p.y > 0 {
+                    self.fill_todo.push(Pos { x: p.x, y: p.y - 1 });
+                }
+                if p.y < 599 {
+                    self.fill_todo.push(Pos { x: p.x, y: p.y + 1 });
+                }
             }
         }
     }
 
     fn add_bitmap(&mut self) {
         if self.bitmaps.len() < 10 {
-            self.bitmaps.insert(0, Bitmap::new());
+            self.bitmaps.push_front(Bitmap::new());
         }
     }
 
@@ -273,7 +291,7 @@ impl Fuun {
                     self.bitmaps[1].pixels[ix] = pixel;
                 }
             }
-            self.bitmaps.remove(0);
+            self.bitmaps.pop_front();
         }
     }
 
@@ -298,43 +316,53 @@ impl Fuun {
                     self.bitmaps[1].pixels[ix] = pixel;
                 }
             }
-            self.bitmaps.remove(0);
+            self.bitmaps.pop_front();
         }
     }
 
-    fn build(&mut self, rna: &str) -> Bitmap {
-	for i in 0..rna.len() {
-	    let code = &rna[i..i+7];
-	    match code {
-		"PIPIIIC" => self.add_color(Color::Rgb(BLACK)),
-		"PIPIIIP" => self.add_color(Color::Rgb(RED)),
-		"PIPIICC" => self.add_color(Color::Rgb(GREEN)),
-		"PIPIICF" => self.add_color(Color::Rgb(YELLOW)),
-		"PIPIICP" => self.add_color(Color::Rgb(BLUE)),
-		"PIPIIFC" => self.add_color(Color::Rgb(MAGENTA)),
-		"PIPIIFF" => self.add_color(Color::Rgb(CYAN)),
-		"PIPIIPC" => self.add_color(Color::Rgb(WHITE)),
-		"PIPIIPF" => self.add_color(Color::Transparency(TRANSPARENT)),
-		"PIPIIPP" => self.add_color(Color::Transparency(OPAQUE)),
-		"PIIPICP" => self.bucket.clear(),
-		"PIIIIIP" => self.position = Fuun::move_dir(self.position, self.dir),
-		"PCCCCCP" => self.dir = Fuun::turn_ccw(self.dir),
-		"PFFFFFP" => self.dir = Fuun::turn_cw(self.dir),
-		"PCCIFFP" => self.mark = self.position,
-		"PFFICCP" => self.line(self.position, self.mark),
-		"PIIPIIP" => self.try_fill(),
-		"PCCPFFP" => self.add_bitmap(),
-		"PFFPCCP" => self.compose(),
-		"PFFICCF" => self.clip(),
-		_ => {}
-	    }
-	}
-	self.bitmaps[0].clone()
+    pub fn step(&mut self, steps: usize) -> (Bitmap, bool) {
+        for _ in 0..steps {
+            let s = self.step;
+            let e = std::cmp::min(self.step + 7, self.rna.len());
+            let code = &self.rna[s..e];
+            match code {
+                "PIPIIIC" => self.add_color(Color::Rgb(BLACK)),
+                "PIPIIIP" => self.add_color(Color::Rgb(RED)),
+                "PIPIICC" => self.add_color(Color::Rgb(GREEN)),
+                "PIPIICF" => self.add_color(Color::Rgb(YELLOW)),
+                "PIPIICP" => self.add_color(Color::Rgb(BLUE)),
+                "PIPIIFC" => self.add_color(Color::Rgb(MAGENTA)),
+                "PIPIIFF" => self.add_color(Color::Rgb(CYAN)),
+                "PIPIIPC" => self.add_color(Color::Rgb(WHITE)),
+                "PIPIIPF" => self.add_color(Color::Transparency(TRANSPARENT)),
+                "PIPIIPP" => self.add_color(Color::Transparency(OPAQUE)),
+                "PIIPICP" => {
+                    self.current = None;
+                    self.bucket.clear();
+                }
+                "PIIIIIP" => self.position = Fuun::move_dir(self.position, self.dir),
+                "PCCCCCP" => self.dir = Fuun::turn_ccw(self.dir),
+                "PFFFFFP" => self.dir = Fuun::turn_cw(self.dir),
+                "PCCIFFP" => self.mark = self.position,
+                "PFFICCP" => self.line(self.position, self.mark),
+                "PIIPIIP" => self.try_fill(),
+                "PCCPFFP" => self.add_bitmap(),
+                "PFFPCCP" => self.compose(),
+                "PFFICCF" => self.clip(),
+                _ => {}
+            }
+            self.step = e;
+            if self.step == self.rna.len() {
+                break;
+            }
+        }
+        (self.bitmaps[0].clone(), self.step == self.rna.len())
     }
-}
 
-pub fn add_one(x: i32) -> i32 {
-    x + 1
+    pub fn build(&mut self) -> Bitmap {
+        let (bmp, _done) = self.step(self.rna.len() / 7 - self.step);
+        bmp
+    }
 }
 
 #[cfg(test)]

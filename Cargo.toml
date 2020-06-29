@@ -4,3 +4,7 @@ members = [
     "rna2fuun",
     "rna2fuun-ui"
 ]
+
+[profile.release]
+debug = true
+
