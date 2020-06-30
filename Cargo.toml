@@ -1,6 +1,9 @@
 [workspace]
 
 members = [
+    "dna2rna",
+    "dna2rna-cli",
+    "dna2rna-ui",
     "rna2fuun",
     "rna2fuun-ui"
 ]

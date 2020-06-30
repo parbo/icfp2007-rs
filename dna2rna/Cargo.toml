@@ -1,0 +1,10 @@
+[package]
+name = "dna2rna"
+version = "0.1.0"
+authors = ["Pär Bohrarper <par.bohrarper@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ropey = "1.2.0"
