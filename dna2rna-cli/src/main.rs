@@ -14,7 +14,7 @@ fn main() {
     let filename = matches.value_of("INPUT").unwrap();
 
     if let Ok(dna) = fs::read_to_string(filename) {
-        let d = dna2rna::Dna2Rna::new(&dna);
+        let mut d = dna2rna::Dna2Rna::new(&dna);
 	d.execute();
     } else {
         println!("error reading file {}", filename);
