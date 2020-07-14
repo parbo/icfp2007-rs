@@ -100,30 +100,38 @@ impl Dna2Rna {
         Some((n, consumed))
     }
 
-    fn consts(mut chars: ropey::iter::Chars) -> Option<(String, usize)> {
+    fn consts(mut chars: ropey::iter::Chars) -> (String, usize) {
         let mut s = vec![];
         let mut extra = 0;
         loop {
-            let c = chars.next()?;
-            match c {
-                'C' => s.push('I'),
-                'F' => s.push('C'),
-                'P' => s.push('F'),
-                'I' => {
-                    let cc = chars.next()?;
-                    if cc == 'C' {
-                        extra = extra + 1;
-                        s.push('P');
-                    } else {
+            if let Some(c) = chars.next() {
+                match c {
+                    'C' => s.push('I'),
+                    'F' => s.push('C'),
+                    'P' => s.push('F'),
+                    'I' => {
+                        if let Some(cc) = chars.next() {
+                            if cc == 'C' {
+                                extra = extra + 1;
+                                s.push('P');
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => {
                         break;
                     }
                 }
-                _ => return None,
+            } else {
+                break;
             }
         }
         let consumed = s.len() + extra;
-        let s: String = s.into_iter().rev().collect();
-        Some((s, consumed))
+        let ret = s.into_iter().collect();
+        (ret, consumed)
     }
 
     fn pattern(&mut self) -> Option<Vec<PItem>> {
@@ -160,7 +168,7 @@ impl Dna2Rna {
                         }
                         'F' => {
                             let _ = chars.next()?;
-                            let (s, consumed) = Dna2Rna::consts(chars)?;
+                            let (s, consumed) = Dna2Rna::consts(chars);
                             p.push(PItem::Search(s));
                             // yes, 3
                             3 + consumed
@@ -258,19 +266,16 @@ impl Dna2Rna {
                                     self.rna.append(self.dna.slice(3..10).into());
                                     10
                                 }
-                                _ => 0,
+                                _ => panic!(),
                             };
                             consumed
                         }
-                        _ => 0,
+                        _ => panic!(),
                     };
                     consumed
                 }
-                _ => 0,
+                _ => panic!(),
             };
-            if consumed == 0 {
-                break;
-            }
             self.dna = self.dna.slice(consumed..).into();
         }
         Some(t)
@@ -288,7 +293,7 @@ impl Dna2Rna {
             match p {
                 PItem::Base(b) => {
                     if curr == *b {
-                        curr = chars.next().unwrap();
+                        curr = chars.next().unwrap_or('X');
                         i = i + 1;
                     } else {
                         log::debug!("no match for {}", b);
@@ -300,25 +305,27 @@ impl Dna2Rna {
                         log::debug!("can't skip {}", *n);
                         return;
                     }
-                    for _ in 0..*n {
-                        curr = chars.next().unwrap_or('X');
-                        i = i + 1;
-                    }
+                    i = i + *n;
+                    chars = self.dna.chars_at(i);
+                    curr = chars.next().unwrap_or('X');
                 }
                 PItem::Search(s) => {
                     let mut n = i;
                     let slen = s.len();
                     let dlen = self.dna.len_chars();
+                    let mut hay = self.dna.slice(n..);
                     loop {
                         if n + slen > dlen {
                             return;
                         }
-                        if self.dna.slice(n..n + slen).chars().eq(s.chars()) {
+                        if hay.slice(0..slen).chars().eq(s.chars()) {
+			    log::debug!("found {} at {}", s, n);
                             i = n;
                             chars = self.dna.chars_at(i);
-                            curr = chars.next().unwrap();
+                            curr = chars.next().unwrap_or('X');
                             break;
                         }
+                        hay = hay.slice(1..);
                         n = n + 1;
                     }
                 }
@@ -335,7 +342,7 @@ impl Dna2Rna {
     }
 
     fn replace(&mut self, template: &[TItem], e: Vec<Rope>) {
-        log::debug!("replacing {:?} with {:?}", template, e);
+        log::debug!("replacing {:?} with envs {:?}", template, e.len());
         let mut r = Rope::new();
         for t in template {
             match t {
@@ -360,7 +367,6 @@ impl Dna2Rna {
         }
         std::mem::swap(&mut self.dna, &mut r);
         self.dna.append(r);
-        log::debug!("new dna: {:?}", self.dna);
     }
 
     fn protect(l: usize, d: &Rope) -> Rope {
@@ -455,26 +461,82 @@ mod tests {
     }
 
     #[test]
+    fn consts() {
+        init();
+        assert_eq!(
+            Dna2Rna::consts(Rope::from_str("IP").chars()),
+            (String::from(""), 0)
+        );
+        assert_eq!(
+            Dna2Rna::consts(Rope::from_str("IF").chars()),
+            (String::from(""), 0)
+        );
+        assert_eq!(
+            Dna2Rna::consts(Rope::from_str("CFIF").chars()),
+            (String::from("IC"), 2)
+        );
+        assert_eq!(
+            Dna2Rna::consts(Rope::from_str("ICFPICFP").chars()),
+            (String::from("PCFPCF"), 8)
+        );
+    }
+
+    #[test]
     fn asnat() {
         init();
-	assert_eq!(Dna2Rna::asnat(0).to_string(), "P");
-	assert_eq!(Dna2Rna::asnat(1).to_string(), "CP");
-	assert_eq!(Dna2Rna::asnat(2).to_string(), "ICP");
-	assert_eq!(Dna2Rna::asnat(3).to_string(), "CCP");
-	assert_eq!(Dna2Rna::asnat(4).to_string(), "IICP");
+        assert_eq!(Dna2Rna::asnat(0).to_string(), "P");
+        assert_eq!(Dna2Rna::asnat(1).to_string(), "CP");
+        assert_eq!(Dna2Rna::asnat(2).to_string(), "ICP");
+        assert_eq!(Dna2Rna::asnat(3).to_string(), "CCP");
+        assert_eq!(Dna2Rna::asnat(4).to_string(), "IICP");
     }
 
     #[test]
     fn asnat_to_nat() {
         init();
         for i in 0..100 {
-	    log::info!("i: {}", i);
-	    let r = Dna2Rna::nat(Dna2Rna::asnat(i).chars());
-	    assert_ne!(r, None);
-	    if let Some((n, _)) = r {
-		assert_eq!(n, i);
-	    }
+            log::info!("i: {}", i);
+            let r = Dna2Rna::nat(Dna2Rna::asnat(i).chars());
+            assert_ne!(r, None);
+            if let Some((n, _)) = r {
+                assert_eq!(n, i);
+            }
         }
+    }
+
+    #[test]
+    fn quote() {
+        init();
+        assert_eq!(Dna2Rna::quote(&Rope::from_str("ICFP")).to_string(), "CFPIC")
+    }
+
+    #[test]
+    fn protect() {
+        init();
+        assert_eq!(
+            Dna2Rna::protect(3, &Rope::from_str("ICFP")).to_string(),
+            "PICCFFP"
+        )
+    }
+
+    #[test]
+    fn match_replace() {
+        init();
+        let mut dna = Dna2Rna::new("IIIIIIIIIIICFPFF", None);
+        dna.match_replace(
+            &[
+                PItem::Base('I'),
+                PItem::Base('I'),
+                PItem::Search("ICFP".into()),
+                PItem::Base('I'),
+                PItem::Base('C'),
+                PItem::Base('F'),
+                PItem::Base('P'),
+                PItem::Base('F'),
+            ],
+            &[TItem::Base('C'), TItem::Base('P')],
+        );
+	assert_eq!(dna.dna.to_string(), "CPF");
     }
 
     #[test]

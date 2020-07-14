@@ -7,13 +7,15 @@ use std::{fs, path};
 pub enum Message {
     StepDNA,
     OpenDNA,
-    StepRNA,
+    StepRNA(bool),
     OpenRNA,
     Quit,
     About,
 }
 
 fn main() {
+    env_logger::init();
+
     let app = App::default().with_scheme(AppScheme::Gtk);
 
     let (s, r) = channel::<Message>();
@@ -94,14 +96,17 @@ fn main() {
 
     let mut d2r: Option<dna2rna::Dna2Rna> = None;
     let mut fuun: Option<rna2fuun::Fuun> = None;
-    let step_dna = 1000;
+    let step_dna = 100;
     let mut step_rna = 0;
+    let mut last_rna_len = 0;
+    let mut steps = 0;
 
     while app.wait().expect("Couldn't run editor!") {
         use Message::*;
         match r.recv() {
             Some(msg) => match msg {
-                StepRNA => {
+                StepRNA(dna) => {
+                    log::info!("rna..");
                     if let Some(f) = &mut fuun {
                         let (bmp, done) = f.step(step_rna);
                         offs.borrow().begin();
@@ -116,11 +121,12 @@ fn main() {
                         offs.borrow().end();
                         frame.redraw();
                         if !done {
-                            s.send(Message::StepRNA);
-                        } else {
+                            s.send(Message::StepRNA(dna));
+                        } else if dna {
                             s.send(Message::StepDNA);
-			}
+                        }
                     }
+                    log::info!("..rna");
                 }
                 OpenRNA => {
                     let mut dlg = FileDialog::new(FileDialogType::BrowseFile);
@@ -137,28 +143,35 @@ fn main() {
                             step_rna = rna.len() / 7;
                             let f = rna2fuun::Fuun::new(&rna);
                             fuun = Some(f);
-                            s.send(Message::StepRNA);
+                            s.send(Message::StepRNA(false));
                         }
                         false => alert(200, 200, "File does not exist!"),
                     }
                 }
                 StepDNA => {
+                    log::info!("dna..");
                     if let Some(d) = &mut d2r {
-			let mut done = false;
-			for _ in 0..step_dna {
+                        let mut done = false;
+                        for _ in 0..step_dna {
+                            steps = steps + 1;
                             if d.execute_step() {
-				done = true;
-				break;
-			    }
-			}
-                        if !done {
-			    let rna = d.rna.to_string();
+                                done = true;
+                                break;
+                            }
+                        }
+                        let rna = d.rna.to_string();
+                        log::info!("dna step {}", steps);
+                        if rna.len() != last_rna_len || done {
+                            log::info!("rna length: {}", rna.len());
                             let f = rna2fuun::Fuun::new(&rna);
                             step_rna = rna.len();
                             fuun = Some(f);
-                            s.send(Message::StepRNA);
+                            s.send(Message::StepRNA(!done));
+                        } else {
+                            s.send(Message::StepDNA);
                         }
                     }
+                    log::info!("..dna");
                 }
                 OpenDNA => {
                     let mut dlg = FileDialog::new(FileDialogType::BrowseFile);
@@ -172,9 +185,12 @@ fn main() {
                     match path::Path::new(&filename).exists() {
                         true => {
                             let dna = fs::read_to_string(filename).unwrap();
-			    // TODO: prefixes
-                            let d = dna2rna::Dna2Rna::new(&dna, Some("IIPIFFCPICICIICPIICIPPPICIIC"));
+                            // TODO: prefixes
+                            let d =
+                                dna2rna::Dna2Rna::new(&dna, Some("IIPIFFCPICICIICPIICIPPPICIIC"));
                             d2r = Some(d);
+                            steps = 0;
+                            last_rna_len = 0;
                             s.send(Message::StepDNA);
                         }
                         false => alert(200, 200, "File does not exist!"),

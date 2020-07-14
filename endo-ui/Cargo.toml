@@ -10,3 +10,5 @@ edition = "2018"
 fltk = { version = "^0.7", features = ["fltk-bundled"] }
 dna2rna = { path = "../dna2rna" }
 rna2fuun = { path = "../rna2fuun" }
+log = "0.4.8"
+env_logger = "0.7.1"
