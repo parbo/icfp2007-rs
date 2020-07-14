@@ -379,22 +379,22 @@ mod tests {
         let c = Color::Rgb(CYAN);
         let t = Color::Transparency(TRANSPARENT);
         let o = Color::Transparency(OPAQUE);
-        let mut fuun_1 = Fuun::new();
+        let mut fuun_1 = Fuun::new("");
         fuun_1.add_color(t);
         fuun_1.add_color(o);
         fuun_1.add_color(o);
         assert_eq!(fuun_1.current_pixel(), Pixel::new(0, 0, 0, 170));
-        let mut fuun_2 = Fuun::new();
+        let mut fuun_2 = Fuun::new("");
         fuun_2.add_color(b);
         fuun_2.add_color(y);
         fuun_2.add_color(c);
         assert_eq!(fuun_2.current_pixel(), Pixel::new(85, 170, 85, 255));
-        let mut fuun_3 = Fuun::new();
+        let mut fuun_3 = Fuun::new("");
         fuun_3.add_color(y);
         fuun_3.add_color(t);
         fuun_3.add_color(o);
         assert_eq!(fuun_3.current_pixel(), Pixel::new(127, 127, 0, 127));
-        let mut fuun_4 = Fuun::new();
+        let mut fuun_4 = Fuun::new("");
         for _ in 0..18 {
             fuun_4.add_color(b);
         }

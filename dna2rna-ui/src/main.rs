@@ -58,7 +58,7 @@ fn main() {
         }
     }));
 
-    let mut d2r: Option<dna2rna::Dna2Rna> = None;
+    let mut _d2r: Option<dna2rna::Dna2Rna> = None;
 
     while app.wait().expect("Couldn't run editor!") {
         use Message::*;
@@ -76,8 +76,8 @@ fn main() {
                     match path::Path::new(&filename).exists() {
                         true => {
                             let dna = fs::read_to_string(filename).unwrap();
-                            let f = dna2rna::Dna2Rna::new(&dna);
-                            d2r = Some(f);
+                            let f = dna2rna::Dna2Rna::new(&dna, None);
+                            _d2r = Some(f);
                         }
                         false => alert(200, 200, "File does not exist!"),
                     }

@@ -1,5 +1,7 @@
 use log;
 use ropey::Rope;
+use std::collections::VecDeque;
+use std::io::Write;
 
 pub struct Dna2Rna {
     dna: Rope,
@@ -23,28 +25,64 @@ enum TItem {
 }
 
 impl Dna2Rna {
-    pub fn new(dna: &str) -> Dna2Rna {
+    pub fn new(dna_str: &str, prefix: Option<&str>) -> Dna2Rna {
+        let mut dna = if let Some(p) = prefix {
+            Rope::from_str(&p)
+        } else {
+            Rope::new()
+        };
+        log::info!("using prefix of len {}", dna.len_chars());
+        dna.append(Rope::from_str(dna_str));
         Dna2Rna {
-            dna: Rope::from_str(dna),
+            dna,
             rna: Rope::new(),
         }
     }
 
     pub fn execute(&mut self) {
         log::info!("dna is {} bases long", self.dna.len_chars());
-        if let Some(p) = self.pattern() {
-            log::info!("pattern: {:?}", p);
-            if let Some(t) = self.template() {
-                log::info!("template: {:?}", t);
-                self.match_replace(&p, &t);
+        let mut i = 0;
+        loop {
+            if self.execute_step() {
+                break;
+            }
+            i = i + 1;
+            if i % 1000 == 0 {
+                log::info!(
+                    "at step {}, dna: {}, rna: {}",
+                    i,
+                    self.dna.len_chars(),
+                    self.rna.len_chars()
+                );
             }
         }
+        log::info!("rna is {} bases long", self.rna.len_chars());
+        log::debug!("remaining dna: {:?}", self.dna);
+    }
+
+    pub fn execute_step(&mut self) -> bool {
+        if let Some(p) = self.pattern() {
+            if let Some(t) = self.template() {
+                self.match_replace(&p, &t);
+            } else {
+                return true;
+            }
+        } else {
+            return true;
+        }
+        false
+    }
+
+    pub fn save_rna<T: Write>(&self, writer: T) -> std::io::Result<()> {
+        self.dna.write_to(writer)
     }
 
     fn nat(mut chars: ropey::iter::Chars) -> Option<(usize, usize)> {
         let mut bits = vec![];
+        let mut consumed = 0;
         loop {
             let c = chars.next()?;
+            consumed = consumed + 1;
             match c {
                 'P' => break,
                 'I' | 'F' => bits.push(0),
@@ -53,14 +91,14 @@ impl Dna2Rna {
             }
         }
         let mut n = 0;
-        for b in &bits {
+        for b in bits.iter().rev() {
             n = n * 2 + b
         }
-        Some((n, bits.len()))
+        Some((n, consumed))
     }
 
     fn consts(mut chars: ropey::iter::Chars) -> Option<(String, usize)> {
-        let mut s = String::new();
+        let mut s = vec![];
         let mut extra = 0;
         loop {
             let c = chars.next()?;
@@ -77,10 +115,11 @@ impl Dna2Rna {
                         break;
                     }
                 }
-                _ => panic!(),
+                _ => return None,
             }
         }
         let consumed = s.len() + extra;
+        let s: String = s.into_iter().rev().collect();
         Some((s, consumed))
     }
 
@@ -157,6 +196,11 @@ impl Dna2Rna {
             if consumed == 0 {
                 break;
             }
+            log::debug!(
+                "consuming dna: {} of available {}",
+                consumed,
+                self.dna.len_chars()
+            );
             self.dna = self.dna.slice(consumed..).into();
         }
         Some(p)
@@ -185,7 +229,7 @@ impl Dna2Rna {
                     let second = chars.next()?;
                     let consumed = match second {
                         'C' => {
-                            t.push(TItem::Base('I'));
+                            t.push(TItem::Base('P'));
                             2
                         }
                         'F' | 'P' => {
@@ -229,13 +273,149 @@ impl Dna2Rna {
         Some(t)
     }
 
-    fn match_replace(&mut self, _pattern: &[PItem], _template: &[TItem]) {}
+    fn match_replace(&mut self, pattern: &[PItem], template: &[TItem]) {
+        let mut e = vec![];
+        let mut c = VecDeque::new();
+        let mut chars = self.dna.chars();
+        let mut curr = chars.next().unwrap();
+        let mut i = 0;
+        log::debug!("match/replace: {:?} {:?}", pattern, template);
+        for p in pattern {
+            log::debug!("pattern: {:?}", p);
+            match p {
+                PItem::Base(b) => {
+                    if curr == *b {
+                        curr = chars.next().unwrap();
+                        i = i + 1;
+                    } else {
+                        log::debug!("no match for {}", b);
+                        return;
+                    }
+                }
+                PItem::Skip(n) => {
+                    if i + *n > self.dna.len_chars() {
+                        log::debug!("can't skip {}", *n);
+                        return;
+                    }
+                    for _ in 0..*n {
+                        curr = chars.next().unwrap_or('X');
+                        i = i + 1;
+                    }
+                }
+                PItem::Search(s) => {
+                    let mut n = i;
+                    let slen = s.len();
+                    let dlen = self.dna.len_chars();
+                    loop {
+                        if n + slen > dlen {
+                            return;
+                        }
+                        if self.dna.slice(n..n + slen).chars().eq(s.chars()) {
+                            i = n;
+                            chars = self.dna.chars_at(i);
+                            curr = chars.next().unwrap();
+                            break;
+                        }
+                        n = n + 1;
+                    }
+                }
+                PItem::Open => c.push_front(i),
+                PItem::Close => {
+                    let cval = c.pop_front().expect("malformed pattern");
+                    e.push(Rope::from(self.dna.slice(cval..i)));
+                }
+            }
+        }
+        log::debug!("dna = dna[{}..]", i);
+        self.dna = self.dna.slice(i..).into();
+        self.replace(template, e);
+    }
+
+    fn replace(&mut self, template: &[TItem], e: Vec<Rope>) {
+        log::debug!("replacing {:?} with {:?}", template, e);
+        let mut r = Rope::new();
+        for t in template {
+            match t {
+                TItem::Base(b) => {
+                    let mut s = String::new();
+                    s.push(*b);
+                    r.append(Rope::from(s));
+                }
+                TItem::Ref(n, l) => {
+                    if *n < e.len() {
+                        r.append(Dna2Rna::protect(*l, &e[*n]));
+                    }
+                }
+                TItem::RefLen(n) => {
+                    if *n < e.len() {
+                        r.append(Dna2Rna::asnat(e[*n].len_chars()));
+                    } else {
+                        r.append(Dna2Rna::asnat(0));
+                    }
+                }
+            }
+        }
+        std::mem::swap(&mut self.dna, &mut r);
+        self.dna.append(r);
+        log::debug!("new dna: {:?}", self.dna);
+    }
+
+    fn protect(l: usize, d: &Rope) -> Rope {
+        if l == 0 {
+            d.clone()
+        } else {
+            Dna2Rna::protect(l - 1, &Dna2Rna::quote(d))
+        }
+    }
+
+    fn quote(d: &Rope) -> Rope {
+        let mut ret = String::new();
+        for c in d.chars() {
+            match c {
+                'I' => ret.push('C'),
+                'C' => ret.push('F'),
+                'F' => ret.push('P'),
+                'P' => {
+                    ret.push('I');
+                    ret.push('C');
+                }
+                _ => return Rope::new(),
+            }
+        }
+        Rope::from(ret)
+    }
+
+    fn asnat(mut n: usize) -> Rope {
+        let mut ret = String::new();
+        loop {
+            if n == 0 {
+                break;
+            } else if n % 2 == 0 {
+                ret.push('I');
+                n = n / 2;
+            } else {
+                ret.push('C');
+                n = n / 2;
+            }
+        }
+        Rope::from(ret)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn complete_examples() {
+        let mut dna_1 = Dna2Rna::new("IIPIPICPIICICIIFICCIFPPIICCFPC", None);
+        dna_1.execute_step();
+        assert_eq!(dna_1.dna.to_string(), "PICFC");
+        let mut dna_2 = Dna2Rna::new("IIPIPICPIICICIIFICCIFCCCPPIICCFPC", None);
+        dna_2.execute_step();
+        assert_eq!(dna_2.dna.to_string(), "PIICCFCFFPC");
+        let mut dna_3 = Dna2Rna::new("IIPIPIICPIICIICCIICFCFC", None);
+        dna_3.execute_step();
+        assert_eq!(dna_3.dna.to_string(), "I");
     }
 }
