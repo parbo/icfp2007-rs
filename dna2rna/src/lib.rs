@@ -5,7 +5,7 @@ use std::io::Write;
 
 pub struct Dna2Rna {
     dna: Rope,
-    rna: Rope,
+    pub rna: Rope,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

@@ -5,6 +5,8 @@ use std::{fs, path};
 
 #[derive(Copy, Clone)]
 pub enum Message {
+    StepDNA,
+    OpenDNA,
     StepRNA,
     OpenRNA,
     Quit,
@@ -46,8 +48,16 @@ fn main() {
     }));
 
     menu.add_emit(
-        "File/Open RNA...",
+        "File/Open DNA...",
         Shortcut::Ctrl + 'o',
+        MenuFlag::Normal,
+        s,
+        Message::OpenDNA,
+    );
+
+    menu.add_emit(
+        "File/Open RNA...",
+        Shortcut::Ctrl + 'r',
         MenuFlag::Normal,
         s,
         Message::OpenRNA,
@@ -82,8 +92,10 @@ fn main() {
         }
     }));
 
+    let mut d2r: Option<dna2rna::Dna2Rna> = None;
     let mut fuun: Option<rna2fuun::Fuun> = None;
-    let mut step = 0;
+    let step_dna = 1000;
+    let mut step_rna = 0;
 
     while app.wait().expect("Couldn't run editor!") {
         use Message::*;
@@ -91,7 +103,7 @@ fn main() {
             Some(msg) => match msg {
                 StepRNA => {
                     if let Some(f) = &mut fuun {
-                        let (bmp, done) = f.step(step);
+                        let (bmp, done) = f.step(step_rna);
                         offs.borrow().begin();
                         for y in 0..600 {
                             for x in 0..600 {
@@ -105,7 +117,9 @@ fn main() {
                         frame.redraw();
                         if !done {
                             s.send(Message::StepRNA);
-                        }
+                        } else {
+                            s.send(Message::StepDNA);
+			}
                     }
                 }
                 OpenRNA => {
@@ -120,10 +134,48 @@ fn main() {
                     match path::Path::new(&filename).exists() {
                         true => {
                             let rna = fs::read_to_string(filename).unwrap();
-                            step = rna.len() / 7;
+                            step_rna = rna.len() / 7;
                             let f = rna2fuun::Fuun::new(&rna);
                             fuun = Some(f);
                             s.send(Message::StepRNA);
+                        }
+                        false => alert(200, 200, "File does not exist!"),
+                    }
+                }
+                StepDNA => {
+                    if let Some(d) = &mut d2r {
+			let mut done = false;
+			for _ in 0..step_dna {
+                            if d.execute_step() {
+				done = true;
+				break;
+			    }
+			}
+                        if !done {
+			    let rna = d.rna.to_string();
+                            let f = rna2fuun::Fuun::new(&rna);
+                            step_rna = rna.len();
+                            fuun = Some(f);
+                            s.send(Message::StepRNA);
+                        }
+                    }
+                }
+                OpenDNA => {
+                    let mut dlg = FileDialog::new(FileDialogType::BrowseFile);
+                    dlg.set_option(FileDialogOptions::NoOptions);
+                    dlg.set_filter("*.dna");
+                    dlg.show();
+                    let filename = dlg.filename().to_string_lossy().to_string();
+                    if filename.is_empty() {
+                        return;
+                    }
+                    match path::Path::new(&filename).exists() {
+                        true => {
+                            let dna = fs::read_to_string(filename).unwrap();
+			    // TODO: prefixes
+                            let d = dna2rna::Dna2Rna::new(&dna, Some("IIPIFFCPICICIICPIICIPPPICIIC"));
+                            d2r = Some(d);
+                            s.send(Message::StepDNA);
                         }
                         false => alert(200, 200, "File does not exist!"),
                     }
