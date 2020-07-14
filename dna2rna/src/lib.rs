@@ -92,10 +92,11 @@ impl Dna2Rna {
                 _ => panic!(),
             }
         }
-        let mut n = 0;
-        for b in bits.iter().rev() {
-            n = n * 2 + b
-        }
+        let n = bits
+            .iter()
+            .enumerate()
+            .map(|(i, b)| b * 2usize.pow(i as u32))
+            .sum();
         Some((n, consumed))
     }
 
@@ -391,6 +392,7 @@ impl Dna2Rna {
         let mut ret = String::new();
         loop {
             if n == 0 {
+                ret.push('P');
                 break;
             } else if n % 2 == 0 {
                 ret.push('I');
@@ -408,8 +410,76 @@ impl Dna2Rna {
 mod tests {
     use super::*;
 
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     #[test]
-    fn complete_examples() {
+    fn pattern() {
+        init();
+        let mut dna_1 = Dna2Rna::new("CIIC", None);
+        let pt_1 = dna_1.pattern();
+        assert_eq!(pt_1, Some(vec![PItem::Base('I')]));
+        let mut dna_2 = Dna2Rna::new("IIPIPICPIICICIIF", None);
+        let pt_2 = dna_2.pattern();
+        assert_eq!(
+            pt_2,
+            Some(vec![
+                PItem::Open,
+                PItem::Skip(2),
+                PItem::Close,
+                PItem::Base('P')
+            ])
+        );
+        let mut dna_3 = Dna2Rna::new("IIIICFPICFCIIC", None);
+        let pt_3 = dna_3.pattern();
+        assert_eq!(dna_3.rna.to_string(), "ICFPICF");
+        assert_eq!(pt_3, Some(vec![PItem::Base('I')]));
+    }
+
+    #[test]
+    fn nat() {
+        init();
+        assert_eq!(Dna2Rna::nat(Rope::from_str("P").chars()), Some((0, 1)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("IP").chars()), Some((0, 2)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("FP").chars()), Some((0, 2)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("CP").chars()), Some((1, 2)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("CIP").chars()), Some((1, 3)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("CFP").chars()), Some((1, 3)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("ICP").chars()), Some((2, 3)));
+        assert_eq!(Dna2Rna::nat(Rope::from_str("ICP").chars()), Some((2, 3)));
+        assert_eq!(
+            Dna2Rna::nat(Rope::from_str("IFCICFICFP").chars()),
+            Some((148, 10))
+        );
+    }
+
+    #[test]
+    fn asnat() {
+        init();
+	assert_eq!(Dna2Rna::asnat(0).to_string(), "P");
+	assert_eq!(Dna2Rna::asnat(1).to_string(), "CP");
+	assert_eq!(Dna2Rna::asnat(2).to_string(), "ICP");
+	assert_eq!(Dna2Rna::asnat(3).to_string(), "CCP");
+	assert_eq!(Dna2Rna::asnat(4).to_string(), "IICP");
+    }
+
+    #[test]
+    fn asnat_to_nat() {
+        init();
+        for i in 0..100 {
+	    log::info!("i: {}", i);
+	    let r = Dna2Rna::nat(Dna2Rna::asnat(i).chars());
+	    assert_ne!(r, None);
+	    if let Some((n, _)) = r {
+		assert_eq!(n, i);
+	    }
+        }
+    }
+
+    #[test]
+    fn complete_step() {
+        init();
         let mut dna_1 = Dna2Rna::new("IIPIPICPIICICIIFICCIFPPIICCFPC", None);
         dna_1.execute_step();
         assert_eq!(dna_1.dna.to_string(), "PICFC");
