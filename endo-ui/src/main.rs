@@ -5,8 +5,8 @@ use std::{fs, path};
 
 #[derive(Copy, Clone)]
 pub enum Message {
-    Step,
-    Open,
+    StepRNA,
+    OpenRNA,
     Quit,
     About,
 }
@@ -19,7 +19,7 @@ fn main() {
     let mut wind = Window::default()
         .with_size(640, 700)
         .center_screen()
-        .with_label("RNA 2 Fuun");
+        .with_label("Endo");
 
     let mut menu = MenuBar::new(0, 0, 640, 40, "");
     menu.set_color(Color::Light2);
@@ -46,11 +46,11 @@ fn main() {
     }));
 
     menu.add_emit(
-        "File/Open...",
+        "File/Open RNA...",
         Shortcut::Ctrl + 'o',
         MenuFlag::Normal,
         s,
-        Message::Open,
+        Message::OpenRNA,
     );
 
     menu.add_emit(
@@ -89,7 +89,7 @@ fn main() {
         use Message::*;
         match r.recv() {
             Some(msg) => match msg {
-                Step => {
+                StepRNA => {
                     if let Some(f) = &mut fuun {
                         let (bmp, done) = f.step(step);
                         offs.borrow().begin();
@@ -104,11 +104,11 @@ fn main() {
                         offs.borrow().end();
                         frame.redraw();
                         if !done {
-                            s.send(Message::Step);
+                            s.send(Message::StepRNA);
                         }
                     }
                 }
-                Open => {
+                OpenRNA => {
                     let mut dlg = FileDialog::new(FileDialogType::BrowseFile);
                     dlg.set_option(FileDialogOptions::NoOptions);
                     dlg.set_filter("*.rna");
@@ -123,13 +123,13 @@ fn main() {
                             step = rna.len() / 7;
                             let f = rna2fuun::Fuun::new(&rna);
                             fuun = Some(f);
-                            s.send(Message::Step);
+                            s.send(Message::StepRNA);
                         }
                         false => alert(200, 200, "File does not exist!"),
                     }
                 }
                 Quit => app.quit(),
-                About => message(200, 200, "RNA 2 Fuun"),
+                About => message(200, 200, "Endo"),
             },
             _ => (),
         }

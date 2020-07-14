@@ -1,5 +1,5 @@
 [package]
-name = "dna2rna-ui"
+name = "endo-ui"
 version = "0.1.0"
 authors = ["Pär Bohrarper <par.bohrarper@gmail.com>"]
 edition = "2018"
@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 fltk = { version = "^0.7", features = ["fltk-bundled"] }
 dna2rna = { path = "../dna2rna" }
+rna2fuun = { path = "../rna2fuun" }
