@@ -96,7 +96,7 @@ fn main() {
 
     let mut d2r: Option<dna2rna::Dna2Rna> = None;
     let mut fuun: Option<rna2fuun::Fuun> = None;
-    let step_dna = 100;
+    let step_dna = 5000;
     let mut step_rna = 0;
     let mut last_rna_len = 0;
     let mut steps = 0;
@@ -186,8 +186,9 @@ fn main() {
                         true => {
                             let dna = fs::read_to_string(filename).unwrap();
                             // TODO: prefixes
-                            let d =
-                                dna2rna::Dna2Rna::new(&dna, Some("IIPIFFCPICICIICPIICIPPPICIIC"));
+                            //let prefix = Some("IIPIFFCPICICIICPIICIPPPICIIC");
+                            let prefix = None;
+                            let d = dna2rna::Dna2Rna::new(&dna, prefix);
                             d2r = Some(d);
                             steps = 0;
                             last_rna_len = 0;

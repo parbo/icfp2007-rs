@@ -76,7 +76,7 @@ impl Dna2Rna {
     }
 
     pub fn save_rna<T: Write>(&self, writer: T) -> std::io::Result<()> {
-        self.dna.write_to(writer)
+        self.rna.write_to(writer)
     }
 
     fn nat(mut chars: ropey::iter::Chars) -> Option<(usize, usize)> {
@@ -319,8 +319,8 @@ impl Dna2Rna {
                             return;
                         }
                         if hay.slice(0..slen).chars().eq(s.chars()) {
-			    log::debug!("found {} at {}", s, n);
-                            i = n;
+                            log::debug!("found {} at {}", s, n);
+                            i = n + slen;
                             chars = self.dna.chars_at(i);
                             curr = chars.next().unwrap_or('X');
                             break;
@@ -337,7 +337,11 @@ impl Dna2Rna {
             }
         }
         log::debug!("dna = dna[{}..]", i);
-        self.dna = self.dna.slice(i..).into();
+        if i < self.dna.len_chars() {
+            self.dna = self.dna.slice(i..).into();
+        } else {
+            self.dna = Rope::new();
+        }
         self.replace(template, e);
     }
 
@@ -528,15 +532,11 @@ mod tests {
                 PItem::Base('I'),
                 PItem::Base('I'),
                 PItem::Search("ICFP".into()),
-                PItem::Base('I'),
-                PItem::Base('C'),
-                PItem::Base('F'),
-                PItem::Base('P'),
                 PItem::Base('F'),
             ],
             &[TItem::Base('C'), TItem::Base('P')],
         );
-	assert_eq!(dna.dna.to_string(), "CPF");
+        assert_eq!(dna.dna.to_string(), "CPF");
     }
 
     #[test]
