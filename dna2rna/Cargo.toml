@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 ropey = "1.2.0"
+log = "0.4.8"

@@ -1,3 +1,4 @@
+use log;
 use ropey::Rope;
 
 pub struct Dna2Rna {
@@ -30,11 +31,11 @@ impl Dna2Rna {
     }
 
     pub fn execute(&mut self) {
-        println!("dna is {} bases long", self.dna.len_chars());
+        log::info!("dna is {} bases long", self.dna.len_chars());
         if let Some(p) = self.pattern() {
-            println!("pattern: {:?}", p);
+            log::info!("pattern: {:?}", p);
             if let Some(t) = self.template() {
-                println!("template: {:?}", t);
+                log::info!("template: {:?}", t);
                 self.match_replace(&p, &t);
             }
         }

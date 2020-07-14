@@ -1,4 +1,5 @@
 use clap::{App, Arg};
+use log;
 use std::fs;
 
 fn main() {
@@ -13,10 +14,12 @@ fn main() {
 
     let filename = matches.value_of("INPUT").unwrap();
 
+    env_logger::init();
+
     if let Ok(dna) = fs::read_to_string(filename) {
         let mut d = dna2rna::Dna2Rna::new(&dna);
 	d.execute();
     } else {
-        println!("error reading file {}", filename);
+        log::error!("error reading file {}", filename);
     }
 }
