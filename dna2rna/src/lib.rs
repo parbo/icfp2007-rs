@@ -63,7 +63,6 @@ impl<'a> Dna2Rna<'a> {
 
     pub fn execute(&mut self) {
         log::info!("dna is {} bases long", self.dna.len_chars());
-        log::info!("dna starts with {}", self.dna.slice(0..32).to_string());
         let mut i = 0;
         loop {
             if self.execute_step() {
@@ -72,7 +71,6 @@ impl<'a> Dna2Rna<'a> {
             i = i + 1;
             if i % 1000 == 0 {
                 log::info!("at step {}, dna: {}", i, self.dna.len_chars());
-                log::info!("dna starts with {}", self.dna.slice(0..32).to_string());
             }
         }
         log::debug!("remaining dna: {:?}", self.dna);
