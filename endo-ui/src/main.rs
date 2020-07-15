@@ -140,7 +140,7 @@ fn main() {
                     match path::Path::new(&filename).exists() {
                         true => {
                             let rna = fs::read_to_string(filename).unwrap();
-                            step_rna = rna.len() / 7;
+                            step_rna = rna.len();
                             let f = rna2fuun::Fuun::new(&rna);
                             fuun = Some(f);
                             s.send(Message::StepRNA(false));
