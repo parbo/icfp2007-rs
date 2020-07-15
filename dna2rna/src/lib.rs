@@ -294,16 +294,13 @@ impl<'a> Dna2Rna<'a> {
     fn match_replace(&mut self, pattern: &[PItem], template: &[TItem]) {
         let mut e = vec![];
         let mut c = VecDeque::new();
-        let mut chars = self.dna.chars();
-        let mut curr = chars.next().unwrap();
         let mut i = 0;
         log::debug!("match/replace: {:?} {:?}", pattern, template);
         for p in pattern {
             log::debug!("pattern: {:?}", p);
             match p {
                 PItem::Base(b) => {
-                    if curr == *b {
-                        curr = chars.next().unwrap_or('X');
+                    if self.dna.char(i) == *b {
                         i = i + 1;
                     } else {
                         log::debug!("no match for {}", b);
@@ -316,26 +313,24 @@ impl<'a> Dna2Rna<'a> {
                         return;
                     }
                     i = i + *n;
-                    chars = self.dna.chars_at(i);
-                    curr = chars.next().unwrap_or('X');
                 }
                 PItem::Search(s) => {
                     let mut n = i;
                     let slen = s.len();
                     let dlen = self.dna.len_chars();
-                    let mut hay = self.dna.slice(n..);
+                    let hay = self.dna.slice(n..);
+                    let mut hay_iter = hay.chars();
                     loop {
                         if n + slen > dlen {
                             return;
                         }
-                        if hay.slice(0..slen).chars().eq(s.chars()) {
+                        let h = hay_iter.clone();
+                        if h.take(slen).eq(s.chars()) {
                             log::debug!("found {} at {}", s, n);
                             i = n + slen;
-                            chars = self.dna.chars_at(i);
-                            curr = chars.next().unwrap_or('X');
                             break;
                         }
-                        hay = hay.slice(1..);
+                        hay_iter.next().unwrap();
                         n = n + 1;
                     }
                 }
