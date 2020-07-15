@@ -353,19 +353,26 @@ impl<'a> Dna2Rna<'a> {
     fn replace(&mut self, template: &[TItem], e: Vec<Rope>) {
         log::debug!("replacing {:?} with envs {:?}", template, e.len());
         let mut r = Rope::new();
+        let mut bases = String::new();
         for t in template {
             match t {
                 TItem::Base(b) => {
-                    let mut s = String::new();
-                    s.push(*b);
-                    r.append(Rope::from(s));
+                    bases.push(*b);
                 }
                 TItem::Ref(n, l) => {
+                    if bases.len() > 0 {
+                        r.append(Rope::from(bases.as_str()));
+                        bases.clear();
+                    }
                     if *n < e.len() {
                         r.append(Dna2Rna::protect(*l, &e[*n]));
                     }
                 }
                 TItem::RefLen(n) => {
+                    if bases.len() > 0 {
+                        r.append(Rope::from(bases.as_str()));
+                        bases.clear();
+                    }
                     if *n < e.len() {
                         r.append(Dna2Rna::asnat(e[*n].len_chars()));
                     } else {
@@ -373,6 +380,10 @@ impl<'a> Dna2Rna<'a> {
                     }
                 }
             }
+        }
+        if bases.len() > 0 {
+            r.append(Rope::from(bases.as_str()));
+            bases.clear();
         }
         std::mem::swap(&mut self.dna, &mut r);
         self.dna.append(r);
