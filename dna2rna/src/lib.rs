@@ -224,7 +224,7 @@ impl<'a> Dna2Rna<'a> {
                 consumed,
                 self.dna.len_chars()
             );
-            self.dna = self.dna.slice(consumed..).into();
+            self.dna = self.dna.split_off(consumed);
         }
         Some(p)
     }
@@ -288,7 +288,7 @@ impl<'a> Dna2Rna<'a> {
                 }
                 _ => panic!(),
             };
-            self.dna = self.dna.slice(consumed..).into();
+            self.dna = self.dna.split_off(consumed);
         }
         Some(t)
     }
