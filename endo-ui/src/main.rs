@@ -44,7 +44,7 @@ impl<'a> Endo<'a> {
         Endo {
             d2r: dna2rna::Dna2Rna::new(rna_store),
             fuun: rna2fuun::Fuun::new(""),
-            step_dna: 5000,
+            step_dna: 25000,
             steps: 0,
         }
     }
