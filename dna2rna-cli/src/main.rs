@@ -1,6 +1,7 @@
 use clap::{App, Arg};
 use log;
 use std::fs;
+use std::io::Write;
 
 fn main() {
     env_logger::init();
@@ -36,11 +37,15 @@ fn main() {
 
     if let Ok(dna) = fs::read_to_string(filename) {
         log::info!("prefix: {:?}", prefix);
-        let mut d = dna2rna::Dna2Rna::new(&dna, prefix);
+        let mut s = dna2rna::VecRnaStore::new();
+        let mut d = dna2rna::Dna2Rna::new(&mut s);
+        d.set_dna_and_prefix(&dna, prefix);
         d.execute();
         if let Some(out_filename) = output {
-            let buf = fs::File::create(out_filename).unwrap();
-            d.save_rna(buf).unwrap();
+            let mut buf = fs::File::create(out_filename).unwrap();
+            for r in &s.rna {
+                buf.write(r.as_bytes()).expect("OH NOES");
+            }
         }
     } else {
         log::error!("error reading file {}", filename);

@@ -1,6 +1,8 @@
 use fltk::{app::*, dialog::*, draw::*, frame::*, menu::*, window::Window};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
 use std::{fs, path};
 
 #[derive(Copy, Clone)]
@@ -11,6 +13,41 @@ pub enum Message {
     OpenRNA,
     Quit,
     About,
+    Test,
+}
+
+struct EndoRnaStore<F>
+where
+    F: Fn(String) -> (),
+{
+    pub cls: Box<F>,
+}
+
+impl<F> dna2rna::RnaStore for EndoRnaStore<F>
+where
+    F: Fn(String) -> (),
+{
+    fn store(&mut self, rna: String) {
+        (*self.cls)(rna);
+    }
+}
+
+struct Endo<'a> {
+    pub d2r: dna2rna::Dna2Rna<'a>,
+    pub fuun: rna2fuun::Fuun,
+    pub step_dna: usize,
+    pub steps: usize,
+}
+
+impl<'a> Endo<'a> {
+    pub fn new(rna_store: &'a mut dyn dna2rna::RnaStore) -> Endo<'a> {
+        Endo {
+            d2r: dna2rna::Dna2Rna::new(rna_store),
+            fuun: rna2fuun::Fuun::new(""),
+            step_dna: 5000,
+            steps: 0,
+        }
+    }
 }
 
 fn main() {
@@ -18,6 +55,7 @@ fn main() {
 
     let app = App::default().with_scheme(AppScheme::Gtk);
 
+    let (tx, rx): (Sender<[char; 7]>, Receiver<[char; 7]>) = mpsc::channel();
     let (s, r) = channel::<Message>();
 
     let mut wind = Window::default()
@@ -94,12 +132,25 @@ fn main() {
         }
     }));
 
-    let mut d2r: Option<dna2rna::Dna2Rna> = None;
-    let mut fuun: Option<rna2fuun::Fuun> = None;
-    let step_dna = 5000;
-    let mut step_rna = 0;
-    let mut last_rna_len = 0;
-    let mut steps = 0;
+    let mut rna_store = EndoRnaStore {
+        cls: Box::new(move |rna: String| {
+            assert_eq!(rna.len(), 7);
+            let mut chars = rna.chars();
+            let c = [
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+                chars.next().unwrap(),
+            ];
+            tx.send(c).expect("error");
+        }),
+    };
+    let mut endo = Endo::new(&mut rna_store);
+
+    s.send(Message::Test);
 
     while app.wait().expect("Couldn't run editor!") {
         use Message::*;
@@ -107,24 +158,34 @@ fn main() {
             Some(msg) => match msg {
                 StepRNA(dna) => {
                     log::info!("rna..");
-                    if let Some(f) = &mut fuun {
-                        let (bmp, done) = f.step(step_rna);
-                        offs.borrow().begin();
-                        for y in 0..600 {
-                            for x in 0..600 {
-                                let ix = (y * 600 + x) as usize;
-                                let pixel = bmp.pixels[ix];
-                                set_color_rgb(pixel.color.r, pixel.color.g, pixel.color.b);
-                                draw_point(x, y);
-                            }
+                    while let Ok(c) = rx.try_recv() {
+                        let mut s = String::new();
+                        s.push(c[0]);
+                        s.push(c[1]);
+                        s.push(c[2]);
+                        s.push(c[3]);
+                        s.push(c[4]);
+                        s.push(c[5]);
+                        s.push(c[6]);
+                        endo.fuun.add_rna_command(s);
+                    }
+                    let rem = endo.fuun.remaining_steps();
+                    let (bmp, done) = endo.fuun.step(rem);
+                    offs.borrow().begin();
+                    for y in 0..600 {
+                        for x in 0..600 {
+                            let ix = (y * 600 + x) as usize;
+                            let pixel = bmp.pixels[ix];
+                            set_color_rgb(pixel.color.r, pixel.color.g, pixel.color.b);
+                            draw_point(x, y);
                         }
-                        offs.borrow().end();
-                        frame.redraw();
-                        if !done {
-                            s.send(Message::StepRNA(dna));
-                        } else if dna {
-                            s.send(Message::StepDNA);
-                        }
+                    }
+                    offs.borrow().end();
+                    frame.redraw();
+                    if !done {
+                        s.send(Message::StepRNA(dna));
+                    } else if dna {
+                        s.send(Message::StepDNA);
                     }
                     log::info!("..rna");
                 }
@@ -140,37 +201,24 @@ fn main() {
                     match path::Path::new(&filename).exists() {
                         true => {
                             let rna = fs::read_to_string(filename).unwrap();
-                            step_rna = rna.len();
-                            let f = rna2fuun::Fuun::new(&rna);
-                            fuun = Some(f);
+                            endo.fuun.reset();
+                            endo.fuun.add_rna_str(&rna);
                             s.send(Message::StepRNA(false));
                         }
                         false => alert(200, 200, "File does not exist!"),
                     }
                 }
                 StepDNA => {
-                    log::info!("dna..");
-                    if let Some(d) = &mut d2r {
-                        let mut done = false;
-                        for _ in 0..step_dna {
-                            steps = steps + 1;
-                            if d.execute_step() {
-                                done = true;
-                                break;
-                            }
-                        }
-                        let rna = d.rna.to_string();
-                        log::info!("dna step {}", steps);
-                        if rna.len() != last_rna_len || done {
-                            log::info!("rna length: {}", rna.len());
-                            let f = rna2fuun::Fuun::new(&rna);
-                            step_rna = rna.len();
-                            fuun = Some(f);
-                            s.send(Message::StepRNA(!done));
-                        } else {
-                            s.send(Message::StepDNA);
+                    log::info!("dna.. {}", endo.steps);
+                    let mut done = false;
+                    for _ in 0..endo.step_dna {
+                        endo.steps = endo.steps + 1;
+                        if endo.d2r.execute_step() {
+                            done = true;
+                            break;
                         }
                     }
+                    s.send(Message::StepRNA(!done));
                     log::info!("..dna");
                 }
                 OpenDNA => {
@@ -188,10 +236,9 @@ fn main() {
                             // TODO: prefixes
                             //let prefix = Some("IIPIFFCPICICIICPIICIPPPICIIC");
                             let prefix = None;
-                            let d = dna2rna::Dna2Rna::new(&dna, prefix);
-                            d2r = Some(d);
-                            steps = 0;
-                            last_rna_len = 0;
+                            endo.d2r.set_dna_and_prefix(&dna, prefix);
+                            endo.fuun.reset();
+                            endo.steps = 0;
                             s.send(Message::StepDNA);
                         }
                         false => alert(200, 200, "File does not exist!"),
@@ -199,6 +246,9 @@ fn main() {
                 }
                 Quit => app.quit(),
                 About => message(200, 200, "Endo"),
+                Test => {
+                    log::info!("testing...");
+                }
             },
             _ => (),
         }

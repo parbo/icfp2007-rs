@@ -120,17 +120,34 @@ impl Fuun {
         f
     }
 
-    fn add_rna_command(&mut self, rna: &str) {
-        assert!(rna.len() == 7);
-        self.rna.push(rna.to_owned());
+    pub fn reset(&mut self) {
+        self.rna.clear();
+        self.bucket.clear();
+        self.position = Pos { x: 0, y: 0 };
+        self.mark = self.position;
+        self.dir = Dir::E;
+        self.bitmaps.clear();
+        self.bitmaps.push_front(Bitmap::new());
+        self.current = None;
+        self.fill_todo.clear();
+        self.step = 0;
     }
 
-    fn add_rna_str(&mut self, rna_str: &str) {
+    pub fn add_rna_command(&mut self, rna: String) {
+        assert!(rna.len() == 7);
+        self.rna.push(rna);
+    }
+
+    pub fn add_rna_str(&mut self, rna_str: &str) {
         for s in (0..rna_str.len()).step_by(7) {
             let e = std::cmp::min(s + 7, rna_str.len());
             let code = &rna_str[s..e];
-            self.add_rna_command(code);
+            self.add_rna_command(code.into());
         }
+    }
+
+    pub fn remaining_steps(&self) -> usize {
+        self.rna.len() - self.step
     }
 
     fn add_color(&mut self, color: Color) {
@@ -374,6 +391,16 @@ impl Fuun {
     pub fn build(&mut self) -> Bitmap {
         let (bmp, _done) = self.step(self.rna.len() - self.step);
         bmp
+    }
+
+    pub fn is_draw_command(rna: &str) -> bool {
+        match rna {
+            "PFFICCP" => true,
+            "PIIPIIP" => true,
+            "PFFPCCP" => true,
+            "PFFICCF" => true,
+            _ => false,
+        }
     }
 }
 

@@ -1,11 +1,30 @@
 use log;
 use ropey::Rope;
 use std::collections::VecDeque;
-use std::io::Write;
 
-pub struct Dna2Rna {
+pub trait RnaStore {
+    fn store(&mut self, rna: String);
+}
+
+pub struct VecRnaStore {
+    pub rna: Vec<String>,
+}
+
+impl VecRnaStore {
+    pub fn new() -> VecRnaStore {
+        VecRnaStore { rna: vec![] }
+    }
+}
+
+impl RnaStore for VecRnaStore {
+    fn store(&mut self, rna: String) {
+        self.rna.push(rna);
+    }
+}
+
+pub struct Dna2Rna<'a> {
     dna: Rope,
-    pub rna: Rope,
+    rna_store: &'a mut dyn RnaStore,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -24,19 +43,22 @@ enum TItem {
     RefLen(usize),
 }
 
-impl Dna2Rna {
-    pub fn new(dna_str: &str, prefix: Option<&str>) -> Dna2Rna {
+impl<'a> Dna2Rna<'a> {
+    pub fn new(rna_store: &'a mut dyn RnaStore) -> Dna2Rna<'a> {
+        Dna2Rna {
+            dna: Rope::new(),
+            rna_store,
+        }
+    }
+
+    pub fn set_dna_and_prefix(&mut self, dna_str: &str, prefix: Option<&str>) {
         let mut dna = if let Some(p) = prefix {
             Rope::from_str(&p)
         } else {
             Rope::new()
         };
-        log::info!("using prefix of len {}", dna.len_chars());
         dna.append(Rope::from_str(dna_str));
-        Dna2Rna {
-            dna,
-            rna: Rope::new(),
-        }
+        self.dna = dna;
     }
 
     pub fn execute(&mut self) {
@@ -49,16 +71,10 @@ impl Dna2Rna {
             }
             i = i + 1;
             if i % 1000 == 0 {
-                log::info!(
-                    "at step {}, dna: {}, rna: {}",
-                    i,
-                    self.dna.len_chars(),
-                    self.rna.len_chars()
-                );
+                log::info!("at step {}, dna: {}", i, self.dna.len_chars());
                 log::info!("dna starts with {}", self.dna.slice(0..32).to_string());
             }
         }
-        log::info!("rna is {} bases long", self.rna.len_chars());
         log::debug!("remaining dna: {:?}", self.dna);
     }
 
@@ -73,10 +89,6 @@ impl Dna2Rna {
             return true;
         }
         false
-    }
-
-    pub fn save_rna<T: Write>(&self, writer: T) -> std::io::Result<()> {
-        self.rna.write_to(writer)
     }
 
     fn nat(mut chars: ropey::iter::Chars) -> Option<(usize, usize)> {
@@ -191,7 +203,7 @@ impl Dna2Rna {
                                     3
                                 }
                                 'I' => {
-                                    self.rna.append(self.dna.slice(3..10).into());
+                                    self.rna_store.store(self.dna.slice(3..10).into());
                                     10
                                 }
                                 _ => 0,
@@ -263,7 +275,7 @@ impl Dna2Rna {
                                     3 + consumed
                                 }
                                 'I' => {
-                                    self.rna.append(self.dna.slice(3..10).into());
+                                    self.rna_store.store(self.dna.slice(3..10).into());
                                     10
                                 }
                                 _ => panic!(),
@@ -427,10 +439,14 @@ mod tests {
     #[test]
     fn pattern() {
         init();
-        let mut dna_1 = Dna2Rna::new("CIIC", None);
+        let mut rna_1 = VecRnaStore::new();
+        let mut dna_1 = Dna2Rna::new(&mut rna_1);
+        dna_1.set_dna_and_prefix("CIIC", None);
         let pt_1 = dna_1.pattern();
         assert_eq!(pt_1, Some(vec![PItem::Base('I')]));
-        let mut dna_2 = Dna2Rna::new("IIPIPICPIICICIIF", None);
+        let mut rna_2 = VecRnaStore::new();
+        let mut dna_2 = Dna2Rna::new(&mut rna_2);
+        dna_2.set_dna_and_prefix("IIPIPICPIICICIIF", None);
         let pt_2 = dna_2.pattern();
         assert_eq!(
             pt_2,
@@ -441,9 +457,11 @@ mod tests {
                 PItem::Base('P')
             ])
         );
-        let mut dna_3 = Dna2Rna::new("IIIICFPICFCIIC", None);
+        let mut rna_3 = VecRnaStore::new();
+        let mut dna_3 = Dna2Rna::new(&mut rna_3);
+        dna_3.set_dna_and_prefix("IIIICFPICFCIIC", None);
         let pt_3 = dna_3.pattern();
-        assert_eq!(dna_3.rna.to_string(), "ICFPICF");
+        assert_eq!(rna_3.rna, vec!["ICFPICF".to_string()]);
         assert_eq!(pt_3, Some(vec![PItem::Base('I')]));
     }
 
@@ -526,7 +544,9 @@ mod tests {
     #[test]
     fn match_replace() {
         init();
-        let mut dna = Dna2Rna::new("IIIIIIIIIIICFPFF", None);
+        let mut rna = VecRnaStore::new();
+        let mut dna = Dna2Rna::new(&mut rna);
+        dna.set_dna_and_prefix("IIIIIIIIIIICFPFF", None);
         dna.match_replace(
             &[
                 PItem::Base('I'),
@@ -542,13 +562,19 @@ mod tests {
     #[test]
     fn complete_step() {
         init();
-        let mut dna_1 = Dna2Rna::new("IIPIPICPIICICIIFICCIFPPIICCFPC", None);
+        let mut rna_1 = VecRnaStore::new();
+        let mut dna_1 = Dna2Rna::new(&mut rna_1);
+        dna_1.set_dna_and_prefix("IIPIPICPIICICIIFICCIFPPIICCFPC", None);
         dna_1.execute_step();
         assert_eq!(dna_1.dna.to_string(), "PICFC");
-        let mut dna_2 = Dna2Rna::new("IIPIPICPIICICIIFICCIFCCCPPIICCFPC", None);
+        let mut rna_2 = VecRnaStore::new();
+        let mut dna_2 = Dna2Rna::new(&mut rna_2);
+        dna_2.set_dna_and_prefix("IIPIPICPIICICIIFICCIFCCCPPIICCFPC", None);
         dna_2.execute_step();
         assert_eq!(dna_2.dna.to_string(), "PIICCFCFFPC");
-        let mut dna_3 = Dna2Rna::new("IIPIPIICPIICIICCIICFCFC", None);
+        let mut rna_3 = VecRnaStore::new();
+        let mut dna_3 = Dna2Rna::new(&mut rna_3);
+        dna_3.set_dna_and_prefix("IIPIPIICPIICIICCIICFCFC", None);
         dna_3.execute_step();
         assert_eq!(dna_3.dna.to_string(), "I");
     }
