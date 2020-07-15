@@ -89,7 +89,7 @@ enum Dir {
 }
 
 pub struct Fuun {
-    rna: String,
+    rna: Vec<String>,
     bucket: Vec<Color>,
     position: Pos,
     mark: Pos,
@@ -101,11 +101,17 @@ pub struct Fuun {
 }
 
 impl Fuun {
-    pub fn new(rna: &str) -> Fuun {
+    pub fn new(rna_str: &str) -> Fuun {
         let mut bitmaps = VecDeque::new();
         bitmaps.push_front(Bitmap::new());
+        let mut rna = vec![];
+        for s in (0..rna_str.len()).step_by(7) {
+            let e = std::cmp::min(s + 7, rna_str.len());
+            let code = &rna_str[s..e];
+            rna.push(code.to_owned());
+        }
         let mut f = Fuun {
-            rna: rna.to_owned(),
+            rna,
             bucket: vec![],
             position: Pos { x: 0, y: 0 },
             mark: Pos { x: 0, y: 0 },
@@ -321,11 +327,9 @@ impl Fuun {
     }
 
     pub fn step(&mut self, steps: usize) -> (Bitmap, bool) {
-        for _ in 0..steps {
-            let s = self.step;
-            let e = std::cmp::min(self.step + 7, self.rna.len());
-            let code = &self.rna[s..e];
-            match code {
+        for s in 0..steps {
+            let code = &self.rna[s];
+            match code.as_str() {
                 "PIPIIIC" => self.add_color(Color::Rgb(BLACK)),
                 "PIPIIIP" => self.add_color(Color::Rgb(RED)),
                 "PIPIICC" => self.add_color(Color::Rgb(GREEN)),
@@ -351,7 +355,7 @@ impl Fuun {
                 "PFFICCF" => self.clip(),
                 _ => {}
             }
-            self.step = e;
+            self.step = s;
             if self.step == self.rna.len() {
                 break;
             }
@@ -360,7 +364,7 @@ impl Fuun {
     }
 
     pub fn build(&mut self) -> Bitmap {
-        let (bmp, _done) = self.step(self.rna.len() / 7 - self.step);
+        let (bmp, _done) = self.step(self.rna.len() - self.step);
         bmp
     }
 }
